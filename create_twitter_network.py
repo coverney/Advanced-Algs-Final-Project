@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 '''
 There are a total of 973 networks in the Twitter dataset
 This script reads in the data for a network from its filenames
@@ -34,7 +36,7 @@ def read_edge(file):
     '''
     Reads a edge list and returns a networkX graph representing the edges
     '''
-    G=nx.read_edgelist(file)
+    G=nx.read_edgelist(file, create_using=nx.DiGraph)
     return G
 
 def visualize_graph(G):
