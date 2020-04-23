@@ -16,6 +16,8 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.colors as colors
+import matplotlib.cm as cmx
 
 def read_featnames(file):
     '''
@@ -39,14 +41,16 @@ def read_edge(file):
     G=nx.read_edgelist(file, create_using=nx.DiGraph)
     return G
 
-def visualize_graph(G):
+def visualize_graph(G, node_color, label):
     '''
-    Visualize graph and color nodes by degree
+    Visualize graph and color nodes by range of values in node_color
     '''
+    node_color_min, node_color_max = min(node_color), max(node_color)
+    viridis = cm = plt.get_cmap('viridis')
+    cNorm  = colors.Normalize(vmin=node_color_min, vmax=node_color_max)
+    scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=viridis)
+
     pos = nx.spring_layout(G)
-    node_color = [2000.0 * G.degree(v) for v in G]
-    min_color = min(node_color)/2000
-    max_color = max(node_color)/2000
     fig,ax = plt.subplots(figsize=(8, 6))
     nx.draw_networkx(G, pos=pos, with_labels=False,
                      node_color=node_color, node_size=150)
@@ -54,12 +58,12 @@ def visualize_graph(G):
     # Create color bar
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('bottom', size='3%', pad=0.05)
-    sm = plt.cm.ScalarMappable(cmap=mpl.cm.viridis, norm=plt.Normalize(vmin=min_color, vmax=max_color))
+    sm = plt.cm.ScalarMappable(cmap=mpl.cm.viridis, norm=plt.Normalize(vmin=node_color_min, vmax=node_color_max))
     sm._A = []
     cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
     cbar.ax.get_xaxis().labelpad = 10
     cbar.ax.tick_params(labelsize=11)
-    cbar.ax.set_xlabel('Degree', rotation=0, size=13)
+    cbar.ax.set_xlabel(label, rotation=0, size=13)
     plt.show()
 
 if __name__ == "__main__":
@@ -67,4 +71,4 @@ if __name__ == "__main__":
     df_feat = read_feat('Data/twitter/12831.feat')
     G = read_edge('Data/twitter/12831.edges')
     print(nx.info(G))
-    visualize_graph(G)
+    visualize_graph(G, [G.degree(v) for v in G], 'Degree')
