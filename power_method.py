@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
+from sklearn.preprocessing import normalize
+import pickle
 
 
 def preprocessing(G):
@@ -107,6 +109,7 @@ def numpy_method(G):
 
 
 def sparse_power_method(G):
+    start = time.time()
     # Tunables
     epsilon = 1e-8
     alpha = 0.5
@@ -154,6 +157,44 @@ def sparse_power_method(G):
     #return np.asarray(pi)[0]
     return pi
 
+def sparse_power_method2(G):
+    start = time.time()
+    # Tunables
+    epsilon = 1e-8
+    alpha = 0.5
+
+    H = nx.adjacency_matrix(G)
+    H = normalize(H, norm='l1', axis=1)
+    shape = H.shape
+    assert shape[0] == shape[1]
+    n = shape[0]
+
+    dangling_nodes = (H.getnnz(1)==0).astype(int)
+
+    pi = 1 / n * np.ones(n)
+    iters = 0
+    difference = 1  # Arbitrary number larger than epsilon; it'll get overwritten
+
+    while difference >= epsilon:
+        prevpi = pi
+        iters += 1
+        # Do normal page-to-page transitions
+        # This is the only step that involves the sparse matrix H
+        pi = alpha * prevpi * H
+        # Fix dangling nodes
+        dangling_term = alpha * (pi * dangling_nodes)
+        # Add in probability to teleport
+        teleportation_constant = 1 - alpha # can be constant since will add to vector
+        # Combine the likelihood of following connections and the likelihood
+        # of teleporting for each elm, divide by n to normalize
+        pi += (dangling_term + teleportation_constant) * (1/n)
+        # Calculate difference between the two vectors
+        difference = np.linalg.norm(pi - prevpi)
+
+    end = time.time()
+    print(f"Time elapsed: {end-start}")
+    print(f"Number of iterations: {iters}")
+    return pi
 
 def rank_nodes(pi, G):
     nodes = list(G.nodes)
@@ -168,15 +209,21 @@ def rank_nodes(pi, G):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        filename = "Data/twitter/12831.edges"
+        # filename = "Data/twitter/12831.edges"
+        filename = "Data/wiki-topcats.txt.gz"
     else:
         filename = sys.argv[1]
     G = read_edge(filename)
-    # print(G.in_edges('180505807'))
-    # print(G.out_edges('180505807'))
     # pi1 = power_method(G)
-    pi1 = sparse_power_method(G)
+    pi1 = sparse_power_method2(G)
     order1 = rank_nodes(pi1, G)
+    with open('wiki_ranking.data', 'wb') as filehandle:
+        # store the data as binary data stream
+        pickle.dump(order1, filehandle)
     # pi2 = numpy_method(G)
     # order2 = rank_nodes(pi2, G)
     # visualize_graph(G, np.array([x for x,_ in order]), 'PersonRank')
+    # with open('twitter_12831_ranking.data', 'rb') as filehandle:
+    #     # read the data as binary data stream
+    #     order = pickle.load(filehandle)
+    # print(order[:4])

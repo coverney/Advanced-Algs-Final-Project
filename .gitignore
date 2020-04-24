@@ -2,3 +2,8 @@ Data/twitter.tar
 Data/twitter.tar.gz
 Data/web-Google.txt.gz
 Data/web-Google.txt
+__pycache__/
+Data/wiki-topcats-categories.txt.gz
+Data/wiki-topcats-page-names.txt.gz
+Data/wiki-topcats.txt.gz
+wiki_ranking.data
