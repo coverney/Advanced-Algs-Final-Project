@@ -121,6 +121,6 @@ if __name__ == "__main__":
     # print(G.out_edges('180505807'))
     pi1 = power_method(G)
     order1 = rank_nodes(pi1, G)
-    pi2 = numpy_method(G)
-    order2 = rank_nodes(pi2, G)
+    # pi2 = numpy_method(G)
+    # order2 = rank_nodes(pi2, G)
     # visualize_graph(G, np.array([x for x,_ in order]), 'PersonRank')
