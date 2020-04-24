@@ -18,7 +18,7 @@ def preprocessing(G):
     alpha = 0.5
 
     H = nx.adjacency_matrix(G)
-    H = H.toarray()
+    # H = H.toarray()
     shape = H.shape
     assert shape[0] == shape[1]
     n = shape[0]
@@ -31,15 +31,19 @@ def preprocessing(G):
     """
 
     # Replace dangling nodes with all 1's
-    dangling_nodes = np.where(~H.any(axis=1))[0]
-    # print(dangling_nodes)
+    dangling_nodes =  np.where(H.getnnz(1)==0)[0] # Works for Scipy sparse arrays
+    # dangling_nodes = np.where(~H.any(axis=1))[0] # Works for Numpy arrays
+    # dangling_nodes = [i for i in range(n) where !any(H[i,:])] # Untested
+    print(dangling_nodes)
     for i in dangling_nodes:
+        # TODO: Use lil_matrix?
         H[i, :] = np.ones(n)  # Link to everyone, including yourself
 
-    assert not np.array([(1 if all(H[i, :] == 0) else 0) for i in range(n)]).any()
+    # assert not np.array([(1 if all(H[i, :] == 0) else 0) for i in range(n)]).any()
+    assert not any(H.getnnz(1)==0)
 
     # Normalize
-    H = H / np.sum(H, axis=1)[:, np.newaxis]
+    H = H / H.sum(axis=1)
     assert not np.isnan(H).any()
 
     # constant_term = np.transpose((1-alpha)*np.ones(n))[np.newaxis]) * (np.ones(n)/n)
@@ -76,7 +80,8 @@ def power_method(G):
     end = time.time()
     print(f"Time elapsed: {end-start}")
     print(f"Number of iterations: {iters}")
-    return pi[0]
+    print(type(pi))
+    return np.asarray(pi)[0]
 
 
 def numpy_method(G):
@@ -101,8 +106,58 @@ def numpy_method(G):
     return principal
 
 
+def sparse_power_method(G):
+    # Tunables
+    epsilon = 1e-8
+    alpha = 0.5
+
+    H = nx.adjacency_matrix(G)
+    # H = H.toarray()
+    shape = H.shape
+    assert shape[0] == shape[1]
+    n = shape[0]
+
+    dangling_nodes = H.getnnz(1)==0 # need to convert to vector of 1's and 0's?
+
+
+    pi = 1 / n * np.ones(n)
+    iters = 0
+    difference = 1  # Arbitrary number larger than epsilon; it'll get overwritten
+
+    while difference >= epsilon:
+        prevpi = pi
+        iters += 1
+
+        # Do normal page-to-page transitions
+        # This is the only step that involves the sparse matrix H
+        pi = prevpi[np.newaxis, :].dot(H)[0]
+        pi = np.asarray(pi)
+        print(pi.shape)
+
+        # Fix dangling nodes
+        dangling_weight = prevpi.dot(dangling_nodes)
+        pi[np.where(dangling_nodes)[0]] = 0
+        dangling_term = np.ones(n) * dangling_weight / n
+        pi += dangling_term
+
+        # Do teleportation
+        pi *= alpha
+        teleportation_term = np.ones(n) * (1-alpha) / n
+        pi += teleportation_term
+
+        difference = np.linalg.norm(pi - prevpi)
+
+    end = time.time()
+    print(f"Time elapsed: {end-start}")
+    print(f"Number of iterations: {iters}")
+    print(type(pi))
+    #return np.asarray(pi)[0]
+    return pi
+
+
 def rank_nodes(pi, G):
     nodes = list(G.nodes)
+    print(len(nodes), len(list(pi)))
     assert len(nodes) == len(list(pi))
     pairs = zip(list(pi), nodes)
     order = sorted(pairs, key=lambda p: p[1])
@@ -119,7 +174,8 @@ if __name__ == "__main__":
     G = read_edge(filename)
     # print(G.in_edges('180505807'))
     # print(G.out_edges('180505807'))
-    pi1 = power_method(G)
+    # pi1 = power_method(G)
+    pi1 = sparse_power_method(G)
     order1 = rank_nodes(pi1, G)
     # pi2 = numpy_method(G)
     # order2 = rank_nodes(pi2, G)
