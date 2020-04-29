@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
+'''
+This script contains 3 different PageRank implementations
+'''
+
 import sys
-from create_twitter_network import *
+from create_network import *
 import numpy as np
 import networkx as nx
 import pandas as pd
@@ -13,9 +17,15 @@ import matplotlib.colors as colors
 import matplotlib.cm as cmx
 from sklearn.preprocessing import normalize
 import pickle
+import os
+from tqdm import tqdm
 
 
 def preprocessing(G):
+    '''
+    Creates a google matrix from the adjacency matrix of an inputted
+    networkX graph
+    '''
     # Tunables
     alpha = 0.5
 
@@ -25,18 +35,8 @@ def preprocessing(G):
     assert shape[0] == shape[1]
     n = shape[0]
 
-    """
-    # Row-normalize the matrix
-    sums = np.sum(H, axis=1)
-    H = np.transpose(np.divide(np.transpose(H), sums, out=np.zeros_like(H), where = sums!=0))
-    assert H.shape == (n, n)
-    """
-
     # Replace dangling nodes with all 1's
     dangling_nodes =  np.where(H.getnnz(1)==0)[0] # Works for Scipy sparse arrays
-    # dangling_nodes = np.where(~H.any(axis=1))[0] # Works for Numpy arrays
-    # dangling_nodes = [i for i in range(n) where !any(H[i,:])] # Untested
-    print(dangling_nodes)
     for i in dangling_nodes:
         # TODO: Use lil_matrix?
         H[i, :] = np.ones(n)  # Link to everyone, including yourself
@@ -55,7 +55,11 @@ def preprocessing(G):
     return google
 
 
-def power_method(G):
+def power_method(G, verbose=True):
+    '''
+    Runs the power method after calling preprocessing() and finding the dense
+    google matrix
+    '''
     start = time.time()
 
     # Tunables
@@ -72,7 +76,7 @@ def power_method(G):
     pi = pi0
 
     while difference >= epsilon:
-        prevpi = pi
+        prevpi = pi.copy()
         iters += 1
 
         pi = prevpi.dot(google)
@@ -80,17 +84,19 @@ def power_method(G):
         difference = np.linalg.norm(pi - prevpi)
 
     end = time.time()
-    print(f"Time elapsed: {end-start}")
-    print(f"Number of iterations: {iters}")
-    print(type(pi))
-    return np.asarray(pi)[0]
+
+    if verbose:
+        print(f"Time elapsed: {end-start}")
+        print(f"Number of iterations: {iters}")
+        return np.asarray(pi)[0]
+    else:
+        return end-start, iters, np.asarray(pi)[0]
 
 
-def numpy_method(G):
+def numpy_method(G, verbose=True):
     """
     Using Numpy's built-in eigenvalue function, find PageRank
     """
-
     # Get eigenvalues and eigenvectors.  The vectors are columns, such that
     # vecs[:,i] is the i'th eigenvector.
     start = time.time()
@@ -104,60 +110,20 @@ def numpy_method(G):
     assert np.abs(np.sum(principal) - 1) < 0.0001  # Roughly 1
 
     end = time.time()
-    print(f"Time elapsed: {end-start}")
-    return principal
 
+    if verbose:
+        print(f"Time elapsed: {end-start}")
+        return principal
+    else:
+        return end-start, principal
 
-def sparse_power_method(G):
-    start = time.time()
-    # Tunables
-    epsilon = 1e-8
-    alpha = 0.5
-
-    H = nx.adjacency_matrix(G)
-    # H = H.toarray()
-    shape = H.shape
-    assert shape[0] == shape[1]
-    n = shape[0]
-
-    dangling_nodes = H.getnnz(1)==0 # need to convert to vector of 1's and 0's?
-
-
-    pi = 1 / n * np.ones(n)
-    iters = 0
-    difference = 1  # Arbitrary number larger than epsilon; it'll get overwritten
-
-    while difference >= epsilon:
-        prevpi = pi
-        iters += 1
-
-        # Do normal page-to-page transitions
-        # This is the only step that involves the sparse matrix H
-        pi = prevpi[np.newaxis, :].dot(H)[0]
-        pi = np.asarray(pi)
-        print(pi.shape)
-
-        # Fix dangling nodes
-        dangling_weight = prevpi.dot(dangling_nodes)
-        pi[np.where(dangling_nodes)[0]] = 0
-        dangling_term = np.ones(n) * dangling_weight / n
-        pi += dangling_term
-
-        # Do teleportation
-        pi *= alpha
-        teleportation_term = np.ones(n) * (1-alpha) / n
-        pi += teleportation_term
-
-        difference = np.linalg.norm(pi - prevpi)
-
-    end = time.time()
-    print(f"Time elapsed: {end-start}")
-    print(f"Number of iterations: {iters}")
-    print(type(pi))
-    #return np.asarray(pi)[0]
-    return pi
-
-def sparse_power_method2(G):
+def sparse_power_method(G, verbose=True):
+    '''
+    Another way of using the power method to find the PageRank.
+    Instead of pre-computing the google matrix, we calculate it using the
+    sparse form of the adjacency matrix in each iteration of the power method.
+    This allows us to save memory and time.
+    '''
     start = time.time()
     # Tunables
     epsilon = 1e-8
@@ -176,13 +142,13 @@ def sparse_power_method2(G):
     difference = 1  # Arbitrary number larger than epsilon; it'll get overwritten
 
     while difference >= epsilon:
-        prevpi = pi
+        prevpi = pi.copy()
         iters += 1
         # Do normal page-to-page transitions
         # This is the only step that involves the sparse matrix H
         pi = alpha * prevpi * H
         # Fix dangling nodes
-        dangling_term = alpha * (pi * dangling_nodes)
+        dangling_term = alpha * (prevpi * dangling_nodes)
         # Add in probability to teleport
         teleportation_constant = 1 - alpha # can be constant since will add to vector
         # Combine the likelihood of following connections and the likelihood
@@ -192,38 +158,112 @@ def sparse_power_method2(G):
         difference = np.linalg.norm(pi - prevpi)
 
     end = time.time()
-    print(f"Time elapsed: {end-start}")
-    print(f"Number of iterations: {iters}")
-    return pi
 
-def rank_nodes(pi, G):
+    if verbose:
+        print(f"Time elapsed: {end-start}")
+        print(f"Number of iterations: {iters}")
+        return pi
+    else:
+        return end-start, iters, pi
+
+def rank_nodes(pi, G, verbose=True):
+    '''
+    Ranks the nodes in a networkX graph by their ranks from PageRank
+    '''
     nodes = list(G.nodes)
-    print(len(nodes), len(list(pi)))
     assert len(nodes) == len(list(pi))
     pairs = zip(list(pi), nodes)
+    # make sure nodes with the same rank have a predictable order
     order = sorted(pairs, key=lambda p: p[1])
+    # sort pairs by rank (descending order)
     order = sorted(order, reverse=True)
-    print(order[:4])
+    if verbose:
+        print(order[:4])
     return order
 
+def analyze_twitter(folder, n):
+    '''
+    Runs all 3 PageRank methods on the first n twitter networks, saving the
+    graph visualizations and metrics.
+    '''
+    num_nodes = []
+    method1_times = []
+    method1_num_iters = []
+    method2_times = []
+    method3_times = []
+    method3_num_iters = []
+    directory = os.fsencode(folder)
+    count = 0
+    # go through the files in the twitter data folder
+    for file in tqdm(os.listdir(directory)):
+        if count > n:
+            break
+        file = file.decode("utf-8")
+        # ignore the non edge files
+        if not '.edges' in file:
+            continue
+        filename = 'Images/twitter'+file.split('.')[0]+'_ranking.png'
+        # read the edge file as a networkX graph
+        G = read_edge(folder+'/'+file)
+        num_nodes.append(len(G.nodes))
+        # run dense power method
+        time1, iter1, pi1 = power_method(G, verbose=False)
+        method1_times.append(time1)
+        method1_num_iters.append(iter1)
+        # run Numpy method
+        time2, pi2 = numpy_method(G, verbose=False)
+        method2_times.append(time2)
+        # run sparse power method
+        time3, iter3, pi3 = sparse_power_method(G, verbose=False)
+        method3_times.append(time3)
+        method3_num_iters.append(iter3)
+        # visualize the graph
+        visualize_graph(G, np.array(list(pi3)), 'PersonRank', filename)
+        count += 1
+    # save the metrics as a csv file
+    df = pd.DataFrame({'num_node':num_nodes, 'method1_time':method1_times,
+            'method1_num_iter':method1_num_iters, 'method2_time':method2_times,
+            'method3_time':method3_times, 'method3_num_iter':method3_num_iters})
+    df.to_csv('twitter_summary.csv', index=False)
+
+def get_top_wikipages(file, n):
+    '''
+    Return the top n Wikipedia article names, sorted by ranking
+    '''
+    # read in the nodes ordered by ranking
+    with open(file, 'rb') as filehandle:
+        # read the data as binary data stream
+        order = pickle.load(filehandle)
+    print(order[:4])
+    # read in the wikipedia article names
+    df = pd.read_csv('Data/wiki-topcats-page-names.txt', names=["article_name"])
+    # return the article names of the first 10 nodes in order
+    names = []
+    for rank, node in order[:n]:
+        names.append(df.loc[int(node), 'article_name'])
+    return names
 
 if __name__ == "__main__":
+    # Run the sparse power method on an edge file
     if len(sys.argv) < 2:
-        # filename = "Data/twitter/12831.edges"
-        filename = "Data/wiki-topcats.txt.gz"
+        filename = "Data/twitter/12831.edges"
+        # filename = "Data/wiki-topcats.txt.gz"
     else:
         filename = sys.argv[1]
     G = read_edge(filename)
-    # pi1 = power_method(G)
-    pi1 = sparse_power_method2(G)
-    order1 = rank_nodes(pi1, G)
-    with open('wiki_ranking.data', 'wb') as filehandle:
-        # store the data as binary data stream
-        pickle.dump(order1, filehandle)
-    # pi2 = numpy_method(G)
-    # order2 = rank_nodes(pi2, G)
-    # visualize_graph(G, np.array([x for x,_ in order]), 'PersonRank')
-    # with open('twitter_12831_ranking.data', 'rb') as filehandle:
-    #     # read the data as binary data stream
-    #     order = pickle.load(filehandle)
-    # print(order[:4])
+    print(len(G.nodes))
+    pi = sparse_power_method(G)
+    # prints out the first 4 nodes
+    order = rank_nodes(pi, G)
+
+    # # save the order as a pickle file
+    # with open('ranking.data', 'wb') as filehandle:
+    #     # store the data as binary data stream
+    #     pickle.dump(order, filehandle)
+
+    # # Analyze the first 50 twitter networks
+    # analyze_twitter('Data/twitter', 50)
+
+    # # Print the 10 highest rank Wikipedia articles
+    # names = get_top_wikipages('wiki_ranking.data', 10)
+    # print(names)

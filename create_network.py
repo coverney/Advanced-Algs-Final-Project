@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 
 """
-There are a total of 973 networks in the Twitter dataset
 This script reads in the data for a network from its filenames
-
-Notes:
-- I am not sure if I am opening the .circles files correctly, because they
-  don't seem to contain much info
-- The .egofeat files also seem kind of useless
-
 """
 
 import sys
@@ -23,7 +16,8 @@ import matplotlib.cm as cmx
 
 def read_featnames(file):
     """
-    Opens a .featnames file which has the feature names and converts it to a df
+    Opens a .featnames file which has the feature names and converts it to a df.
+    Used for the Twitter data
     """
     df = pd.read_csv(file, sep=" ", names=["featname"], index_col=0)
     return df
@@ -32,7 +26,8 @@ def read_featnames(file):
 def read_feat(file):
     """
     Opens a .feat file which has the feature values for each node.
-    The first elm in each line is the node name, all other values are binary
+    The first elm in each line is the node name, all other values are binary.
+    Used for the Twitter data
     """
     df = pd.read_csv(file, sep=" ", names=["node_id"] + list(range(0, 1364)))
     return df
@@ -46,9 +41,10 @@ def read_edge(file):
     return G
 
 
-def visualize_graph(G, node_color, label):
+def visualize_graph(G, node_color, label, filename=None):
     """
-    Visualize graph and color nodes by range of values in node_color
+    Visualize graph and color nodes by range of values in node_color and
+    saves the image if a filename is given
     """
     node_color_min, node_color_max = min(node_color), max(node_color)
     viridis = cm = plt.get_cmap("viridis")
@@ -56,7 +52,7 @@ def visualize_graph(G, node_color, label):
     scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=viridis)
 
     pos = nx.spring_layout(G)
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(10, 8))
     nx.draw_networkx(
         G, pos=pos, with_labels=False, node_color=node_color, node_size=150
     )
@@ -73,12 +69,13 @@ def visualize_graph(G, node_color, label):
     cbar.ax.get_xaxis().labelpad = 10
     cbar.ax.tick_params(labelsize=11)
     cbar.ax.set_xlabel(label, rotation=0, size=13)
-    plt.show()
-
+    if not filename:
+        plt.show()
+    else:
+        plt.savefig(filename, format='png', bbox_inches='tight')
 
 if __name__ == "__main__":
-    # df_featnames = read_featnames('Data/twitter/12831.featnames')
-    # df_feat = read_feat('Data/twitter/12831.feat')
+    # Test read_edge and visualize_graph for a twitter network
     if len(sys.argv) < 2:
         G = read_edge("Data/twitter/12831.edges")
     else:
